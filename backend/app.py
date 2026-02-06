@@ -18,8 +18,10 @@ load_dotenv()
 
 def create_app():
     """Create and configure Flask app"""
-    # Serve static files from ../frontend
-    app = Flask(__name__, static_folder='../frontend', static_url_path='')
+    # Serve static files from ../frontend (absolute path)
+    base_dir = os.path.abspath(os.path.dirname(__file__))
+    frontend_dir = os.path.join(base_dir, '../frontend')
+    app = Flask(__name__, static_folder=frontend_dir, static_url_path='')
     app.config.from_object(Config)
     app.secret_key = app.config.get('SECRET_KEY', 'dev-secret-key-change-in-production')
 
