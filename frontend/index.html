@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Our Recipe Collection</title>
+    <title>Finn and Morgan's Recipe Book</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <!-- Login Screen -->
-    <div id="login-screen" class="screen active">
+        <div id="login-screen" class="screen active">
         <div class="login-container">
-            <h1>Our Recipe Collection</h1>
+            <h1>Finn and Morgan's Recipe Book</h1>
             <p>Welcome! Enter the password to continue.</p>
             <form id="login-form">
                 <input type="password" id="password-input" placeholder="Password" required>
@@ -23,7 +23,7 @@
     <!-- Main App Screen -->
     <div id="app-screen" class="screen">
         <header>
-            <h1>Our Recipe Collection</h1>
+            <h1>Finn and Morgan's Recipe Book</h1>
             <button id="logout-btn" class="logout-btn">Logout</button>
         </header>
 
@@ -36,6 +36,25 @@
                     <button type="submit">Scrape Recipe</button>
                 </form>
                 <div id="scrape-status" class="status-message"></div>
+
+                <div class="add-divider"></div>
+
+                <section class="manual-recipe-section">
+                    <h3>Add Manually</h3>
+                    <form id="manual-recipe-form">
+                        <div class="manual-grid">
+                            <input type="text" id="manual-title" placeholder="Recipe title" required>
+                            <input type="text" id="manual-yields" placeholder="Yields (e.g., 4 servings)">
+                            <input type="number" id="manual-total-time" placeholder="Total time (minutes)" min="0">
+                            <input type="url" id="manual-source-url" placeholder="Optional source URL">
+                            <input type="url" id="manual-image-url" placeholder="Optional image URL">
+                        </div>
+                        <textarea id="manual-ingredients" placeholder="Ingredients (one per line). Optional section headers end with ':'&#10;Example:&#10;Chicken:&#10;Chicken thighs&#10;Salt&#10;Sauce:&#10;Yogurt" required></textarea>
+                        <textarea id="manual-instructions" placeholder="Instructions. You can use Step 1:, Step 2:, etc." required></textarea>
+                        <button type="submit">Save Manual Recipe</button>
+                    </form>
+                    <div id="manual-status" class="status-message"></div>
+                </section>
             </section>
 
             <!-- Search Section -->

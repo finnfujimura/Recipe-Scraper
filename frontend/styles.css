@@ -211,6 +211,62 @@ main {
     color: white;
 }
 
+.add-divider {
+    height: 1px;
+    background: #eadfce;
+    margin: 26px 0 20px;
+}
+
+.manual-recipe-section h3 {
+    color: var(--sage);
+    margin-bottom: 12px;
+    font-size: 22px;
+}
+
+#manual-recipe-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.manual-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+#manual-recipe-form input,
+#manual-recipe-form textarea {
+    width: 100%;
+    padding: 12px 14px;
+    border: 2px solid #e0d6c8;
+    border-radius: 10px;
+    font-size: 15px;
+    background: #fffaf5;
+    font-family: 'Space Grotesk', sans-serif;
+}
+
+#manual-recipe-form textarea {
+    min-height: 110px;
+    resize: vertical;
+}
+
+#manual-recipe-form button {
+    align-self: flex-start;
+    padding: 12px 20px;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background 0.3s, transform 0.2s;
+}
+
+#manual-recipe-form button:hover {
+    background: var(--accent-dark);
+    transform: translateY(-1px);
+}
+
 .error {
     color: #cf5346;
     margin-top: 10px;
@@ -557,6 +613,14 @@ main {
 
     #add-recipe-form {
         flex-direction: column;
+    }
+
+    .manual-grid {
+        grid-template-columns: 1fr;
+    }
+
+    #manual-recipe-form button {
+        width: 100%;
     }
 
     .search-controls {

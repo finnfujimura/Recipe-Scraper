@@ -1,4 +1,5 @@
 import os
+from uuid import uuid4
 from flask import Flask, request, jsonify, session
 from flask_cors import CORS
 from dotenv import load_dotenv
@@ -15,6 +16,37 @@ except ModuleNotFoundError:
     from config import Config
 
 load_dotenv()
+
+
+def _normalize_manual_ingredients(raw_ingredients):
+    """Normalize manual ingredient payload into grouped structure."""
+    if not isinstance(raw_ingredients, list) or not raw_ingredients:
+        return None
+
+    # Already grouped format: [{section, items}]
+    if isinstance(raw_ingredients[0], dict):
+        groups = []
+        for group in raw_ingredients:
+            section = str(group.get('section') or 'Ingredients').strip() or 'Ingredients'
+            raw_items = group.get('items') if isinstance(group, dict) else []
+            items = [
+                str(item).strip()
+                for item in (raw_items or [])
+                if str(item).strip()
+            ]
+            if items:
+                groups.append({'section': section, 'items': items})
+        return groups or None
+
+    # Flat list: ["item 1", "item 2"]
+    if isinstance(raw_ingredients[0], str):
+        items = [str(item).strip() for item in raw_ingredients if str(item).strip()]
+        if not items:
+            return None
+        return [{'section': 'Ingredients', 'items': items}]
+
+    return None
+
 
 def create_app():
     """Create and configure Flask app"""
@@ -97,6 +129,58 @@ def create_app():
             return jsonify({'error': str(e)}), 400
         except Exception as e:
             return jsonify({'error': f'Failed to add recipe: {str(e)}'}), 500
+
+    @app.route('/api/recipes/manual', methods=['POST'])
+    @login_required
+    def add_manual_recipe():
+        """Add a recipe manually without scraping."""
+        try:
+            data = request.get_json() or {}
+            title = str(data.get('title') or '').strip()
+            instructions = str(data.get('instructions') or '').strip()
+            normalized_ingredients = _normalize_manual_ingredients(data.get('ingredients'))
+
+            if not title:
+                return jsonify({'error': 'Title is required'}), 400
+            if not instructions:
+                return jsonify({'error': 'Instructions are required'}), 400
+            if not normalized_ingredients:
+                return jsonify({'error': 'Ingredients are required'}), 400
+
+            source_url = str(data.get('source_url') or '').strip()
+            recipe_url = f"manual://{uuid4()}"
+            if source_url:
+                if not source_url.startswith('http'):
+                    return jsonify({'error': 'Source URL must start with http/https'}), 400
+                existing = supabase.table('recipes').select('id').eq('url', source_url).execute()
+                if existing.data:
+                    return jsonify({'error': 'Recipe already exists', 'id': existing.data[0]['id']}), 409
+                recipe_url = source_url
+
+            total_time_raw = data.get('total_time')
+            total_time = None
+            if total_time_raw not in (None, ''):
+                total_time = int(total_time_raw)
+                if total_time < 0:
+                    return jsonify({'error': 'Total time must be non-negative'}), 400
+
+            recipe_data = {
+                'url': recipe_url,
+                'title': title,
+                'image_url': str(data.get('image_url') or '').strip() or None,
+                'ingredients': normalized_ingredients,
+                'instructions': instructions,
+                'total_time': total_time,
+                'yields': str(data.get('yields') or '').strip() or None,
+            }
+
+            result = supabase.table('recipes').insert(recipe_data).execute()
+            return jsonify(result.data[0]), 201
+
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
+        except Exception as e:
+            return jsonify({'error': f'Failed to add manual recipe: {str(e)}'}), 500
 
     @app.route('/api/recipes/<recipe_id>', methods=['PUT'])
     @login_required

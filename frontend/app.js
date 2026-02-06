@@ -19,10 +19,12 @@ const loginForm = document.getElementById('login-form');
 const loginError = document.getElementById('login-error');
 const logoutBtn = document.getElementById('logout-btn');
 const addRecipeForm = document.getElementById('add-recipe-form');
+const manualRecipeForm = document.getElementById('manual-recipe-form');
 const recipeUrlInput = document.getElementById('recipe-url');
 const recipeSearchInput = document.getElementById('recipe-search');
 const searchModeSelect = document.getElementById('search-mode');
 const scrapeStatus = document.getElementById('scrape-status');
+const manualStatus = document.getElementById('manual-status');
 const recipesContainer = document.getElementById('recipes-container');
 const filterBtns = document.querySelectorAll('.filter-btn');
 const recipeModal = document.getElementById('recipe-modal');
@@ -39,6 +41,7 @@ function setupEventListeners() {
     loginForm.addEventListener('submit', handleLogin);
     logoutBtn.addEventListener('click', handleLogout);
     addRecipeForm.addEventListener('submit', handleAddRecipe);
+    manualRecipeForm.addEventListener('submit', handleAddManualRecipe);
     recipeSearchInput.addEventListener('input', handleSearch);
     searchModeSelect.addEventListener('change', handleSearchModeChange);
     filterBtns.forEach(btn => {
@@ -56,6 +59,39 @@ function updateSearchPlaceholder() {
     recipeSearchInput.placeholder = currentSearchMode === 'ingredient'
         ? 'Search ingredients (e.g., chicken)...'
         : 'Search recipe names...';
+}
+
+function parseManualIngredients(rawText) {
+    const lines = String(rawText || '')
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0);
+
+    const groups = [];
+    let currentGroup = { section: 'Ingredients', items: [] };
+
+    for (const rawLine of lines) {
+        const line = rawLine.replace(/^[-*]\s+/, '').trim();
+        if (!line) {
+            continue;
+        }
+
+        if (line.endsWith(':') && line.length > 1) {
+            if (currentGroup.items.length > 0) {
+                groups.push(currentGroup);
+            }
+            currentGroup = { section: line.slice(0, -1).trim(), items: [] };
+            continue;
+        }
+
+        currentGroup.items.push(line);
+    }
+
+    if (currentGroup.items.length > 0) {
+        groups.push(currentGroup);
+    }
+
+    return groups;
 }
 
 // Authentication
@@ -175,6 +211,63 @@ async function handleAddRecipe(e) {
     } catch (error) {
         scrapeStatus.textContent = `Error: ${error.message}`;
         scrapeStatus.classList.add('error');
+    }
+}
+
+async function handleAddManualRecipe(e) {
+    e.preventDefault();
+
+    const title = document.getElementById('manual-title').value.trim();
+    const ingredientsText = document.getElementById('manual-ingredients').value;
+    const instructions = document.getElementById('manual-instructions').value.trim();
+    const yields = document.getElementById('manual-yields').value.trim();
+    const totalTime = document.getElementById('manual-total-time').value.trim();
+    const sourceUrl = document.getElementById('manual-source-url').value.trim();
+    const imageUrl = document.getElementById('manual-image-url').value.trim();
+    const ingredients = parseManualIngredients(ingredientsText);
+
+    manualStatus.textContent = 'Saving manual recipe...';
+    manualStatus.className = 'status-message';
+
+    if (!title || !instructions || ingredients.length === 0) {
+        manualStatus.textContent = 'Title, ingredients, and instructions are required.';
+        manualStatus.classList.add('error');
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_URL}/recipes/manual`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+                title,
+                ingredients,
+                instructions,
+                yields: yields || null,
+                total_time: totalTime || null,
+                source_url: sourceUrl || null,
+                image_url: imageUrl || null
+            })
+        });
+
+        if (response.ok) {
+            manualStatus.textContent = 'Manual recipe saved!';
+            manualStatus.classList.add('success');
+            manualRecipeForm.reset();
+            loadRecipes();
+            setTimeout(() => {
+                manualStatus.textContent = '';
+                manualStatus.className = 'status-message';
+            }, 3000);
+        } else {
+            const error = await response.json().catch(() => ({}));
+            manualStatus.textContent = error.error || 'Failed to save manual recipe';
+            manualStatus.classList.add('error');
+        }
+    } catch (error) {
+        manualStatus.textContent = `Error: ${error.message}`;
+        manualStatus.classList.add('error');
     }
 }
 
@@ -358,6 +451,10 @@ function openRecipeModal(recipeId) {
     const ingredientsHtml = renderIngredientGroups(recipe.ingredients);
     const instructionsHtml = renderInstructions(recipe.instructions);
 
+    const sourceLink = recipe.url && recipe.url.startsWith('http')
+        ? `<p style="margin-top: 20px;"><a href="${recipe.url}" target="_blank">View Original Recipe</a></p>`
+        : '';
+
     const modalBody = document.getElementById('modal-body');
     modalBody.innerHTML = `
         ${recipe.image_url ? `<img src="${recipe.image_url}" alt="${recipe.title}">` : ''}
@@ -392,7 +489,7 @@ function openRecipeModal(recipeId) {
             <button class="delete" onclick="deleteRecipe('${recipe.id}')">Delete Recipe</button>
         </div>
 
-        <p style="margin-top: 20px;"><a href="${recipe.url}" target="_blank">View Original Recipe</a></p>
+        ${sourceLink}
     `;
 
     recipeModal.classList.add('active');
