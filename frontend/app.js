@@ -1,8 +1,16 @@
 const API_HOST = window.location.hostname || 'localhost';
 const DEFAULT_API_BASE_URL = `http://${API_HOST}:5001`;
-const API_BASE_URL = (window.APP_CONFIG && window.APP_CONFIG.API_BASE_URL !== undefined
-    ? window.APP_CONFIG.API_BASE_URL
-    : DEFAULT_API_BASE_URL).replace(/\/+$/, '');
+const CONFIGURED_API_BASE_URL = (
+    window.APP_CONFIG && typeof window.APP_CONFIG.API_BASE_URL === 'string'
+        ? window.APP_CONFIG.API_BASE_URL.trim()
+        : null
+);
+const IS_LOCAL_HOST = API_HOST === 'localhost' || API_HOST === '127.0.0.1';
+const API_BASE_URL = (
+    CONFIGURED_API_BASE_URL === ''
+        ? (IS_LOCAL_HOST ? DEFAULT_API_BASE_URL : '')
+        : (CONFIGURED_API_BASE_URL || DEFAULT_API_BASE_URL)
+).replace(/\/+$/, '');
 const API_URL = `${API_BASE_URL}/api`;
 
 // State
@@ -20,6 +28,7 @@ const loginError = document.getElementById('login-error');
 const logoutBtn = document.getElementById('logout-btn');
 const addRecipeForm = document.getElementById('add-recipe-form');
 const manualRecipeForm = document.getElementById('manual-recipe-form');
+const openManualModalBtn = document.getElementById('open-manual-modal-btn');
 const recipeUrlInput = document.getElementById('recipe-url');
 const recipeSearchInput = document.getElementById('recipe-search');
 const searchModeSelect = document.getElementById('search-mode');
@@ -28,7 +37,9 @@ const manualStatus = document.getElementById('manual-status');
 const recipesContainer = document.getElementById('recipes-container');
 const filterBtns = document.querySelectorAll('.filter-btn');
 const recipeModal = document.getElementById('recipe-modal');
-const modalClose = document.querySelector('.close');
+const recipeModalClose = document.getElementById('recipe-modal-close');
+const manualModal = document.getElementById('manual-modal');
+const manualModalClose = document.getElementById('manual-modal-close');
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -42,15 +53,20 @@ function setupEventListeners() {
     logoutBtn.addEventListener('click', handleLogout);
     addRecipeForm.addEventListener('submit', handleAddRecipe);
     manualRecipeForm.addEventListener('submit', handleAddManualRecipe);
+    openManualModalBtn.addEventListener('click', openManualModal);
     recipeSearchInput.addEventListener('input', handleSearch);
     searchModeSelect.addEventListener('change', handleSearchModeChange);
     filterBtns.forEach(btn => {
         btn.addEventListener('click', handleFilter);
     });
-    modalClose.addEventListener('click', closeModal);
+    recipeModalClose.addEventListener('click', closeModal);
+    manualModalClose.addEventListener('click', closeManualModal);
     window.addEventListener('click', (e) => {
         if (e.target === recipeModal) {
             closeModal();
+        }
+        if (e.target === manualModal) {
+            closeManualModal();
         }
     });
 }
@@ -126,7 +142,11 @@ async function handleLogin(e) {
             showApp();
         } else {
             const data = await response.json().catch(() => ({}));
-            loginError.textContent = data.error || 'Invalid password';
+            if (response.status === 401) {
+                loginError.textContent = data.error || 'Invalid password';
+            } else {
+                loginError.textContent = data.error || `Login failed (API ${response.status})`;
+            }
         }
     } catch (error) {
         loginError.textContent = `Connection error (${API_URL})`;
@@ -260,6 +280,7 @@ async function handleAddManualRecipe(e) {
                 manualStatus.textContent = '';
                 manualStatus.className = 'status-message';
             }, 3000);
+            closeManualModal();
         } else {
             const error = await response.json().catch(() => ({}));
             manualStatus.textContent = error.error || 'Failed to save manual recipe';
@@ -269,6 +290,16 @@ async function handleAddManualRecipe(e) {
         manualStatus.textContent = `Error: ${error.message}`;
         manualStatus.classList.add('error');
     }
+}
+
+function openManualModal() {
+    manualStatus.textContent = '';
+    manualStatus.className = 'status-message';
+    manualModal.classList.add('active');
+}
+
+function closeManualModal() {
+    manualModal.classList.remove('active');
 }
 
 function handleFilter(e) {

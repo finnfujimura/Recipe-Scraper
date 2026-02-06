@@ -36,25 +36,9 @@
                     <button type="submit">Scrape Recipe</button>
                 </form>
                 <div id="scrape-status" class="status-message"></div>
-
-                <div class="add-divider"></div>
-
-                <section class="manual-recipe-section">
-                    <h3>Add Manually</h3>
-                    <form id="manual-recipe-form">
-                        <div class="manual-grid">
-                            <input type="text" id="manual-title" placeholder="Recipe title" required>
-                            <input type="text" id="manual-yields" placeholder="Yields (e.g., 4 servings)">
-                            <input type="number" id="manual-total-time" placeholder="Total time (minutes)" min="0">
-                            <input type="url" id="manual-source-url" placeholder="Optional source URL">
-                            <input type="url" id="manual-image-url" placeholder="Optional image URL">
-                        </div>
-                        <textarea id="manual-ingredients" placeholder="Ingredients (one per line). Optional section headers end with ':'&#10;Example:&#10;Chicken:&#10;Chicken thighs&#10;Salt&#10;Sauce:&#10;Yogurt" required></textarea>
-                        <textarea id="manual-instructions" placeholder="Instructions. You can use Step 1:, Step 2:, etc." required></textarea>
-                        <button type="submit">Save Manual Recipe</button>
-                    </form>
-                    <div id="manual-status" class="status-message"></div>
-                </section>
+                <div class="manual-entry-row">
+                    <button id="open-manual-modal-btn" type="button" class="manual-open-btn">Add Recipe Manually</button>
+                </div>
             </section>
 
             <!-- Search Section -->
@@ -86,8 +70,29 @@
     <!-- Recipe Modal -->
     <div id="recipe-modal" class="modal">
         <div class="modal-content">
-            <span class="close">&times;</span>
+            <span id="recipe-modal-close" class="close">&times;</span>
             <div id="modal-body"></div>
+        </div>
+    </div>
+
+    <!-- Manual Recipe Modal -->
+    <div id="manual-modal" class="modal">
+        <div class="modal-content manual-modal-content">
+            <span id="manual-modal-close" class="close">&times;</span>
+            <h2>Add Recipe Manually</h2>
+            <form id="manual-recipe-form">
+                <div class="manual-grid">
+                    <input type="text" id="manual-title" placeholder="Recipe title" required>
+                    <input type="text" id="manual-yields" placeholder="Yields (e.g., 4 servings)">
+                    <input type="number" id="manual-total-time" placeholder="Total time (minutes)" min="0">
+                    <input type="url" id="manual-source-url" placeholder="Optional source URL">
+                    <input type="url" id="manual-image-url" placeholder="Optional image URL">
+                </div>
+                <textarea id="manual-ingredients" placeholder="Ingredients (one per line). Optional section headers end with ':'&#10;Example:&#10;Chicken:&#10;Chicken thighs&#10;Salt&#10;Sauce:&#10;Yogurt" required></textarea>
+                <textarea id="manual-instructions" placeholder="Instructions. You can use Step 1:, Step 2:, etc." required></textarea>
+                <button type="submit">Save Manual Recipe</button>
+            </form>
+            <div id="manual-status" class="status-message"></div>
         </div>
     </div>
 

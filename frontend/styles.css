@@ -211,16 +211,23 @@ main {
     color: white;
 }
 
-.add-divider {
-    height: 1px;
-    background: #eadfce;
-    margin: 26px 0 20px;
+.manual-entry-row {
+    margin-top: 14px;
 }
 
-.manual-recipe-section h3 {
+.manual-open-btn {
+    padding: 12px 20px;
+    background: #fffaf5;
     color: var(--sage);
-    margin-bottom: 12px;
-    font-size: 22px;
+    border: 2px dashed var(--sage);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.2s;
+}
+
+.manual-open-btn:hover {
+    background: var(--sage-light);
+    transform: translateY(-1px);
 }
 
 #manual-recipe-form {
@@ -265,6 +272,15 @@ main {
 #manual-recipe-form button:hover {
     background: var(--accent-dark);
     transform: translateY(-1px);
+}
+
+.manual-modal-content {
+    max-width: 900px;
+}
+
+.manual-modal-content h2 {
+    color: var(--sage);
+    margin-bottom: 16px;
 }
 
 .error {
