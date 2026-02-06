@@ -1,5 +1,14 @@
 import pytest
-from backend.scraper import scrape_recipe, _post_process_grouped_ingredients
+from unittest.mock import Mock, patch
+from backend.scraper import (
+    scrape_recipe,
+    _post_process_grouped_ingredients,
+    _is_instagram_url,
+    _extract_instagram_caption_from_html,
+    _parse_instagram_caption,
+    _instagram_candidate_urls,
+    _scrape_instagram_recipe,
+)
 
 def test_scrape_recipe_success():
     """Test scraping a valid recipe URL"""
@@ -97,3 +106,90 @@ def test_post_process_grouped_ingredients_bun_rieu_cleanup():
     assert '32 oz Vermicelli Noodles' in section_map['Noodles']
     assert 'Tofu Puffs' in section_map['Toppings']
     assert 'Fermented Shrimp Paste' in section_map['Garnishes']
+
+
+def test_is_instagram_url():
+    assert _is_instagram_url("https://www.instagram.com/p/ABC123/")
+    assert _is_instagram_url("https://instagram.com/reel/XYZ456/")
+    assert _is_instagram_url("https://www.instagram.com/reels/XYZ456/")
+    assert _is_instagram_url("https://instagr.am/p/ABC123/")
+    assert not _is_instagram_url("https://www.allrecipes.com/recipe/12151/banana-cream-pie-i/")
+    assert not _is_instagram_url("https://www.instagram.com/some_profile/")
+
+
+def test_extract_instagram_caption_from_html_og_description():
+    html = """
+    <html>
+      <head>
+        <meta property="og:description" content='chefaccount on Instagram: "Ingredients:\\n2 cups flour\\nInstructions:\\nMix and bake."' />
+      </head>
+    </html>
+    """
+    caption = _extract_instagram_caption_from_html(html)
+    assert "Ingredients:" in caption
+    assert "2 cups flour" in caption
+    assert "Instructions:" in caption
+
+
+def test_parse_instagram_caption_sections():
+    caption = """
+    Weeknight Garlic Chicken
+    Ingredients:
+    Chicken:
+    1 lb chicken thighs
+    1 tsp salt
+    Sauce:
+    2 tbsp yogurt
+    Instructions:
+    Sear the chicken.
+    Mix the sauce and toss.
+    Serve hot.
+    """
+    parsed = _parse_instagram_caption(caption)
+
+    assert parsed["title"] == "Weeknight Garlic Chicken"
+    assert parsed["ingredients"]
+    sections = {group["section"]: group["items"] for group in parsed["ingredients"]}
+    assert "Chicken" in sections
+    assert "Sauce" in sections
+    assert "1 lb chicken thighs" in sections["Chicken"]
+    assert "2 tbsp yogurt" in sections["Sauce"]
+    assert "Step 1" in parsed["instructions"]
+    assert "Step 2" in parsed["instructions"]
+
+
+def test_instagram_candidate_urls_include_embed():
+    urls = _instagram_candidate_urls("https://www.instagram.com/reel/XYZ456/?igsh=abc")
+    assert urls[0] == "https://www.instagram.com/reel/XYZ456/"
+    assert "https://www.instagram.com/reel/XYZ456/?hl=en" in urls
+    assert "https://www.instagram.com/reel/XYZ456/embed/captioned/" in urls
+    assert "https://www.instagram.com/reel/XYZ456/embed/captioned/?hl=en" in urls
+
+
+def test_scrape_instagram_recipe_falls_back_to_embed():
+    primary_html = "<html><head><meta property='og:description' content=''></head></html>"
+    embed_html = """
+    <html>
+      <head>
+        <meta property="og:description" content='chef on Instagram: "Quick Reel Recipe\\nIngredients:\\n1 lb chicken\\nInstructions:\\nCook."' />
+        <meta property="og:image" content="https://example.com/reel.jpg" />
+      </head>
+    </html>
+    """
+
+    first_resp = Mock()
+    first_resp.text = primary_html
+    first_resp.raise_for_status = Mock()
+
+    second_resp = Mock()
+    second_resp.text = embed_html
+    second_resp.raise_for_status = Mock()
+
+    with patch("backend.scraper.requests.get", side_effect=[first_resp, second_resp]) as mock_get:
+        recipe = _scrape_instagram_recipe("https://www.instagram.com/reel/XYZ456/")
+
+    assert mock_get.call_count == 2
+    assert recipe["title"] == "Quick Reel Recipe"
+    assert recipe["image_url"] == "https://example.com/reel.jpg"
+    assert recipe["ingredients"]
+    assert "1 lb chicken" in recipe["ingredients"][0]["items"]

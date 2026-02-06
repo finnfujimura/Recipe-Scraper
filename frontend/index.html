@@ -3,18 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Finn and Morgan's Recipe Book</title>
+    <title>Finn & Morgan's Recipe Book</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <!-- Login Screen -->
-        <div id="login-screen" class="screen active">
+    <div id="login-screen" class="screen active">
         <div class="login-container">
+            <div class="login-greeting">welcome back</div>
             <h1>Finn and Morgan's Recipe Book</h1>
-            <p>Welcome! Enter the password to continue.</p>
+            <div class="login-divider"><span>&#127860;</span></div>
             <form id="login-form">
-                <input type="password" id="password-input" placeholder="Password" required>
-                <button type="submit">Login</button>
+                <input type="password" id="password-input" placeholder="Enter password..." required>
+                <button type="submit">Enter</button>
             </form>
             <div id="login-error" class="error"></div>
         </div>
@@ -23,21 +24,25 @@
     <!-- Main App Screen -->
     <div id="app-screen" class="screen">
         <header>
-            <h1>Finn and Morgan's Recipe Book</h1>
+            <div class="header-brand">
+                <span class="header-icon">&#127859;</span>
+                <h1>Finn and Morgan's Recipes</h1>
+            </div>
             <button id="logout-btn" class="logout-btn">Logout</button>
         </header>
 
         <main>
             <!-- Add Recipe Section -->
             <section class="add-recipe-section">
-                <h2>Add New Recipe</h2>
+                <h2>Add a New Recipe</h2>
+                <p class="add-recipe-hint">Paste a link, preview it, then save</p>
                 <form id="add-recipe-form">
-                    <input type="url" id="recipe-url" placeholder="Paste recipe URL here..." required>
-                    <button type="submit">Scrape Recipe</button>
+                    <input type="url" id="recipe-url" placeholder="Paste a recipe URL here..." required>
+                    <button type="submit">Scrape &amp; Preview</button>
                 </form>
                 <div id="scrape-status" class="status-message"></div>
                 <div class="manual-entry-row">
-                    <button id="open-manual-modal-btn" type="button" class="manual-open-btn">Add Recipe Manually</button>
+                    <button id="open-manual-modal-btn" type="button" class="manual-open-btn">&#9998; Add Recipe by Hand</button>
                 </div>
             </section>
 
@@ -65,6 +70,10 @@
                 <p class="loading">Loading recipes...</p>
             </section>
         </main>
+
+        <footer class="site-footer">
+            Made with <span class="footer-heart">&#9829;</span> for our kitchen adventures
+        </footer>
     </div>
 
     <!-- Recipe Modal -->
@@ -75,11 +84,38 @@
         </div>
     </div>
 
+    <!-- Edit Recipe Modal -->
+    <div id="edit-recipe-modal" class="modal">
+        <div class="modal-content preview-modal-content">
+            <span id="edit-recipe-modal-close" class="close">&times;</span>
+            <h2>Edit Recipe Details</h2>
+            <p class="preview-modal-hint">Fix title, ingredients, and instructions after scraping.</p>
+            <form id="edit-recipe-form">
+                <input type="hidden" id="edit-recipe-id">
+                <div class="manual-grid">
+                    <input type="text" id="edit-title" placeholder="Recipe title" required>
+                    <input type="text" id="edit-yields" placeholder="Yields (e.g., 4 servings)">
+                    <input type="number" id="edit-total-time" placeholder="Total time (minutes)" min="0">
+                    <input type="url" id="edit-source-url" placeholder="Source URL" readonly>
+                    <input type="url" id="edit-image-url" placeholder="Optional image URL">
+                </div>
+                <textarea id="edit-ingredients" placeholder="Ingredients (one per line). Optional section headers end with ':'" required></textarea>
+                <textarea id="edit-instructions" placeholder="Instructions" required></textarea>
+                <div class="preview-actions">
+                    <button type="submit">Save Recipe Details</button>
+                    <button id="edit-cancel-btn" type="button" class="secondary-btn">Cancel</button>
+                </div>
+            </form>
+            <div id="edit-status" class="status-message"></div>
+        </div>
+    </div>
+
     <!-- Manual Recipe Modal -->
     <div id="manual-modal" class="modal">
         <div class="modal-content manual-modal-content">
             <span id="manual-modal-close" class="close">&times;</span>
-            <h2>Add Recipe Manually</h2>
+            <h2>Add a Recipe by Hand</h2>
+            <p class="manual-modal-hint">For grandma's recipes and those scribbled on napkins</p>
             <form id="manual-recipe-form">
                 <div class="manual-grid">
                     <input type="text" id="manual-title" placeholder="Recipe title" required>
@@ -90,9 +126,34 @@
                 </div>
                 <textarea id="manual-ingredients" placeholder="Ingredients (one per line). Optional section headers end with ':'&#10;Example:&#10;Chicken:&#10;Chicken thighs&#10;Salt&#10;Sauce:&#10;Yogurt" required></textarea>
                 <textarea id="manual-instructions" placeholder="Instructions. You can use Step 1:, Step 2:, etc." required></textarea>
-                <button type="submit">Save Manual Recipe</button>
+                <button type="submit">Save Recipe</button>
             </form>
             <div id="manual-status" class="status-message"></div>
+        </div>
+    </div>
+
+    <!-- Scrape Preview Modal -->
+    <div id="preview-modal" class="modal">
+        <div class="modal-content preview-modal-content">
+            <span id="preview-modal-close" class="close">&times;</span>
+            <h2>Review Scraped Recipe</h2>
+            <p class="preview-modal-hint">Make edits, then save it to your recipe book.</p>
+            <form id="preview-recipe-form">
+                <div class="manual-grid">
+                    <input type="text" id="preview-title" placeholder="Recipe title" required>
+                    <input type="text" id="preview-yields" placeholder="Yields (e.g., 4 servings)">
+                    <input type="number" id="preview-total-time" placeholder="Total time (minutes)" min="0">
+                    <input type="url" id="preview-source-url" placeholder="Source URL" readonly>
+                    <input type="url" id="preview-image-url" placeholder="Optional image URL">
+                </div>
+                <textarea id="preview-ingredients" placeholder="Ingredients (one per line). Optional section headers end with ':'" required></textarea>
+                <textarea id="preview-instructions" placeholder="Instructions" required></textarea>
+                <div class="preview-actions">
+                    <button type="submit">Save Recipe</button>
+                    <button id="preview-cancel-btn" type="button" class="secondary-btn">Cancel</button>
+                </div>
+            </form>
+            <div id="preview-status" class="status-message"></div>
         </div>
     </div>
 

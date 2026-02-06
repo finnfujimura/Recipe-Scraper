@@ -48,6 +48,37 @@ def _normalize_manual_ingredients(raw_ingredients):
     return None
 
 
+def _build_recipe_payload(data, recipe_url: str):
+    """Build a normalized recipe payload for inserts."""
+    title = str(data.get('title') or '').strip()
+    instructions = str(data.get('instructions') or '').strip()
+    normalized_ingredients = _normalize_manual_ingredients(data.get('ingredients'))
+
+    if not title:
+        raise ValueError('Title is required')
+    if not instructions:
+        raise ValueError('Instructions are required')
+    if not normalized_ingredients:
+        raise ValueError('Ingredients are required')
+
+    total_time_raw = data.get('total_time')
+    total_time = None
+    if total_time_raw not in (None, ''):
+        total_time = int(total_time_raw)
+        if total_time < 0:
+            raise ValueError('Total time must be non-negative')
+
+    return {
+        'url': recipe_url,
+        'title': title,
+        'image_url': str(data.get('image_url') or '').strip() or None,
+        'ingredients': normalized_ingredients,
+        'instructions': instructions,
+        'total_time': total_time,
+        'yields': str(data.get('yields') or '').strip() or None,
+    }
+
+
 def create_app():
     """Create and configure Flask app"""
     # Serve static files from ../frontend (absolute path)
@@ -130,22 +161,36 @@ def create_app():
         except Exception as e:
             return jsonify({'error': f'Failed to add recipe: {str(e)}'}), 500
 
+    @app.route('/api/recipes/preview', methods=['POST'])
+    @login_required
+    def preview_recipe():
+        """Scrape a recipe URL and return editable preview data without saving."""
+        try:
+            data = request.get_json() or {}
+            url = str(data.get('url') or '').strip()
+            if not url:
+                return jsonify({'error': 'URL is required'}), 400
+
+            existing = supabase.table('recipes').select('id').eq('url', url).execute()
+            if existing.data:
+                return jsonify({'error': 'Recipe already exists', 'id': existing.data[0]['id']}), 409
+
+            recipe_data = scrape_recipe(url)
+            if recipe_data.get('error'):
+                return jsonify({'error': recipe_data['error']}), 422
+
+            return jsonify(recipe_data), 200
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
+        except Exception as e:
+            return jsonify({'error': f'Failed to preview recipe: {str(e)}'}), 500
+
     @app.route('/api/recipes/manual', methods=['POST'])
     @login_required
     def add_manual_recipe():
         """Add a recipe manually without scraping."""
         try:
             data = request.get_json() or {}
-            title = str(data.get('title') or '').strip()
-            instructions = str(data.get('instructions') or '').strip()
-            normalized_ingredients = _normalize_manual_ingredients(data.get('ingredients'))
-
-            if not title:
-                return jsonify({'error': 'Title is required'}), 400
-            if not instructions:
-                return jsonify({'error': 'Instructions are required'}), 400
-            if not normalized_ingredients:
-                return jsonify({'error': 'Ingredients are required'}), 400
 
             source_url = str(data.get('source_url') or '').strip()
             recipe_url = f"manual://{uuid4()}"
@@ -157,23 +202,7 @@ def create_app():
                     return jsonify({'error': 'Recipe already exists', 'id': existing.data[0]['id']}), 409
                 recipe_url = source_url
 
-            total_time_raw = data.get('total_time')
-            total_time = None
-            if total_time_raw not in (None, ''):
-                total_time = int(total_time_raw)
-                if total_time < 0:
-                    return jsonify({'error': 'Total time must be non-negative'}), 400
-
-            recipe_data = {
-                'url': recipe_url,
-                'title': title,
-                'image_url': str(data.get('image_url') or '').strip() or None,
-                'ingredients': normalized_ingredients,
-                'instructions': instructions,
-                'total_time': total_time,
-                'yields': str(data.get('yields') or '').strip() or None,
-            }
-
+            recipe_data = _build_recipe_payload(data, recipe_url)
             result = supabase.table('recipes').insert(recipe_data).execute()
             return jsonify(result.data[0]), 201
 
@@ -185,7 +214,7 @@ def create_app():
     @app.route('/api/recipes/<recipe_id>', methods=['PUT'])
     @login_required
     def update_recipe(recipe_id):
-        """Update recipe status, rating, or notes"""
+        """Update recipe fields."""
         try:
             data = request.get_json() or {}
 
@@ -207,6 +236,41 @@ def create_app():
 
             if 'date_cooked' in data:
                 update_data['date_cooked'] = data['date_cooked']
+
+            # Editable recipe content fields
+            if 'title' in data:
+                title = str(data.get('title') or '').strip()
+                if not title:
+                    return jsonify({'error': 'Title is required'}), 400
+                update_data['title'] = title
+
+            if 'ingredients' in data:
+                normalized_ingredients = _normalize_manual_ingredients(data.get('ingredients'))
+                if not normalized_ingredients:
+                    return jsonify({'error': 'Ingredients are required'}), 400
+                update_data['ingredients'] = normalized_ingredients
+
+            if 'instructions' in data:
+                instructions = str(data.get('instructions') or '').strip()
+                if not instructions:
+                    return jsonify({'error': 'Instructions are required'}), 400
+                update_data['instructions'] = instructions
+
+            if 'total_time' in data:
+                total_time_raw = data.get('total_time')
+                if total_time_raw in (None, ''):
+                    update_data['total_time'] = None
+                else:
+                    total_time = int(total_time_raw)
+                    if total_time < 0:
+                        return jsonify({'error': 'Total time must be non-negative'}), 400
+                    update_data['total_time'] = total_time
+
+            if 'yields' in data:
+                update_data['yields'] = str(data.get('yields') or '').strip() or None
+
+            if 'image_url' in data:
+                update_data['image_url'] = str(data.get('image_url') or '').strip() or None
 
             if not update_data:
                 return jsonify({'error': 'No fields to update'}), 400

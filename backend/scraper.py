@@ -2,7 +2,13 @@ from recipe_scrapers import scrape_me
 from typing import Dict, List, Tuple
 import logging
 import re
+import json
+from html import unescape
 from collections import OrderedDict
+from urllib.parse import urlparse, urlunparse
+
+import requests
+from bs4 import BeautifulSoup
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -22,6 +28,36 @@ BUN_RIEU_SECTION_ORDER = [
     "Garnishes",
     "For Serving / Other",
 ]
+
+INSTAGRAM_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/122.0.0.0 Safari/537.36"
+    )
+}
+INSTAGRAM_HEADERS_MOBILE = {
+    "User-Agent": (
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
+        "AppleWebKit/605.1.15 (KHTML, like Gecko) "
+        "Version/17.0 Mobile/15E148 Safari/604.1"
+    )
+}
+
+INSTAGRAM_CONTENT_PATH_RE = re.compile(r"/(p|reel|reels|tv)/([A-Za-z0-9_-]+)", re.IGNORECASE)
+
+INGREDIENT_SECTION_RE = re.compile(r"^(ingredients?|what you need)\s*:?\s*$", re.IGNORECASE)
+INSTRUCTION_SECTION_RE = re.compile(
+    r"^(instructions?|method|directions?|steps?)\s*:?\s*$",
+    re.IGNORECASE,
+)
+GENERIC_SECTION_RE = re.compile(r"^[A-Za-z][A-Za-z0-9 '&/()-]{1,40}:\s*$")
+MEASUREMENT_RE = re.compile(
+    r"^(\d+([./]\d+)?|\d+\s+\d/\d|\d/\d)\s*"
+    r"(cup|cups|tbsp|tsp|teaspoon|teaspoons|tablespoon|tablespoons|"
+    r"oz|ounce|ounces|g|gram|grams|kg|lb|lbs|ml|l)\b",
+    re.IGNORECASE,
+)
 
 
 def _clean_text(value: str) -> str:
@@ -488,6 +524,315 @@ def _infer_groups_from_steps(
     return grouped if len(grouped) >= 2 else []
 
 
+def _is_instagram_url(url: str) -> bool:
+    try:
+        parsed = urlparse(url)
+        host = (parsed.netloc or "").lower()
+        path = parsed.path or ""
+    except Exception:
+        return False
+    if "instagram.com" not in host and "instagr.am" not in host:
+        return False
+    return bool(INSTAGRAM_CONTENT_PATH_RE.search(path))
+
+
+def _is_instagram_host(url: str) -> bool:
+    try:
+        parsed = urlparse(url)
+        host = (parsed.netloc or "").lower()
+    except Exception:
+        return False
+    return "instagram.com" in host or "instagr.am" in host
+
+
+def _normalize_instagram_url(url: str) -> str:
+    parsed = urlparse(url)
+    raw_path = re.sub(r"/+", "/", parsed.path or "/")
+    match = INSTAGRAM_CONTENT_PATH_RE.search(raw_path)
+    if match:
+        content_type = match.group(1).lower()
+        shortcode = match.group(2)
+        normalized_path = f"/{content_type}/{shortcode}/"
+    else:
+        normalized_path = raw_path.rstrip("/") + "/"
+    return urlunparse((parsed.scheme or "https", parsed.netloc, normalized_path, "", "", ""))
+
+
+def _instagram_embed_url(url: str) -> str:
+    parsed = urlparse(url)
+    base_path = (parsed.path or "/").rstrip("/")
+    return urlunparse((parsed.scheme or "https", parsed.netloc, f"{base_path}/embed/captioned/", "", "", ""))
+
+
+def _instagram_candidate_urls(url: str) -> List[str]:
+    normalized = _normalize_instagram_url(url)
+    embed_url = _instagram_embed_url(normalized)
+    url_with_lang = normalized + "?hl=en"
+    embed_with_lang = embed_url + "?hl=en"
+    return [normalized, url_with_lang, embed_url, embed_with_lang]
+
+
+def _extract_meta_content(soup: BeautifulSoup, attr: str, value: str) -> str:
+    tag = soup.find("meta", attrs={attr: value})
+    if not tag:
+        return ""
+    return str(tag.get("content", "")).strip()
+
+
+def _extract_instagram_caption_from_html(html: str) -> str:
+    soup = BeautifulSoup(html, "html.parser")
+
+    og_description = _extract_meta_content(soup, "property", "og:description")
+    if og_description:
+        match = re.search(r'on Instagram:\s*"(.+?)"', og_description, re.IGNORECASE | re.DOTALL)
+        if match:
+            return unescape(match.group(1)).strip()
+        quoted_match = re.search(r':\s*"(.+?)"\s*$', og_description, re.DOTALL)
+        if quoted_match:
+            return unescape(quoted_match.group(1)).strip()
+        quoted_start_match = re.search(r':\s*"(.+)$', og_description, re.DOTALL)
+        if quoted_start_match:
+            return unescape(quoted_start_match.group(1)).strip().rstrip('"')
+        return unescape(og_description).strip()
+
+    name_description = _extract_meta_content(soup, "name", "description")
+    if name_description:
+        return unescape(name_description).strip()
+
+    for script_tag in soup.find_all("script", attrs={"type": "application/ld+json"}):
+        raw = script_tag.string or script_tag.text or ""
+        if not raw.strip():
+            continue
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        candidates = payload if isinstance(payload, list) else [payload]
+        for candidate in candidates:
+            if not isinstance(candidate, dict):
+                continue
+            for field in ("caption", "description", "articleBody"):
+                value = candidate.get(field)
+                if isinstance(value, str) and value.strip():
+                    return unescape(value).strip()
+
+    return ""
+
+
+def _extract_instagram_image_from_html(html: str) -> str | None:
+    soup = BeautifulSoup(html, "html.parser")
+    image_url = _extract_meta_content(soup, "property", "og:image")
+    return image_url or None
+
+
+def _normalize_caption_text(caption: str) -> str:
+    text = unescape(caption or "")
+    text = text.replace("\\n", "\n")
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = re.sub(r"\u200b", "", text)
+    return text.strip()
+
+
+def _clean_caption_line(line: str) -> str:
+    cleaned = line.strip()
+    cleaned = re.sub(r"^[\-\*\u2022]+\s*", "", cleaned)
+    cleaned = re.sub(r"^\d+[\.)]\s*", "", cleaned)
+    cleaned = cleaned.strip()
+    return cleaned
+
+
+def _looks_like_ingredient_line(line: str) -> bool:
+    if not line:
+        return False
+    lowered = line.lower()
+    if MEASUREMENT_RE.search(line):
+        return True
+    ingredient_words = [
+        "salt",
+        "pepper",
+        "garlic",
+        "onion",
+        "oil",
+        "sugar",
+        "flour",
+        "butter",
+        "chicken",
+        "beef",
+        "pork",
+        "egg",
+        "milk",
+        "cream",
+        "water",
+    ]
+    return any(word in lowered for word in ingredient_words) and "," in line
+
+
+def _parse_ingredient_groups_from_lines(lines: List[str]) -> List[Dict[str, List[str]]]:
+    groups: List[Dict[str, List[str]]] = []
+    current = {"section": "Ingredients", "items": []}
+
+    for line in lines:
+        if not line:
+            continue
+        if INSTRUCTION_SECTION_RE.match(line):
+            break
+        if INGREDIENT_SECTION_RE.match(line):
+            continue
+        if GENERIC_SECTION_RE.match(line) and not _looks_like_ingredient_line(line):
+            if current["items"]:
+                groups.append(current)
+            current = {"section": line.rstrip(":").strip(), "items": []}
+            continue
+        current["items"].append(line)
+
+    if current["items"]:
+        groups.append(current)
+
+    return _post_process_grouped_ingredients(groups)
+
+
+def _extract_title_from_caption(lines: List[str]) -> str:
+    for line in lines:
+        lowered = line.lower()
+        if INGREDIENT_SECTION_RE.match(line) or INSTRUCTION_SECTION_RE.match(line):
+            continue
+        if lowered.startswith("#"):
+            continue
+        title = re.sub(r"\s*#\w+", "", line).strip()
+        if title:
+            return title[:120]
+    return "Instagram Recipe"
+
+
+def _format_instructions_from_lines(lines: List[str]) -> str:
+    if not lines:
+        return "No instructions available."
+
+    cleaned_steps = []
+    for raw in lines:
+        if not raw:
+            continue
+        if INSTRUCTION_SECTION_RE.match(raw):
+            continue
+        if INGREDIENT_SECTION_RE.match(raw):
+            continue
+        cleaned_steps.append(raw)
+
+    if len(cleaned_steps) == 1:
+        sentence_steps = [
+            item.strip()
+            for item in re.split(r"(?<=[.!?])\s+", cleaned_steps[0])
+            if item.strip()
+        ]
+        if len(sentence_steps) > 1:
+            cleaned_steps = sentence_steps
+
+    if not cleaned_steps:
+        return "No instructions available."
+
+    formatted = []
+    for index, step in enumerate(cleaned_steps, start=1):
+        formatted.append(f"Step {index}\n{step}")
+    return "\n\n".join(formatted)
+
+
+def _split_caption_into_lines(caption: str) -> List[str]:
+    normalized = _normalize_caption_text(caption)
+    if not normalized:
+        return []
+
+    raw_lines = [_clean_caption_line(line) for line in normalized.split("\n")]
+    lines = [line for line in raw_lines if line]
+
+    # If caption is a single long line, split on sentence boundaries as fallback.
+    if len(lines) == 1 and len(lines[0]) > 180:
+        sentence_lines = [
+            _clean_caption_line(part)
+            for part in re.split(r"(?<=[.!?])\s+", lines[0])
+        ]
+        lines = [line for line in sentence_lines if line]
+
+    return lines
+
+
+def _parse_instagram_caption(caption: str) -> Dict:
+    lines = _split_caption_into_lines(caption)
+    title = _extract_title_from_caption(lines)
+
+    ingredient_start = next((i for i, line in enumerate(lines) if INGREDIENT_SECTION_RE.match(line)), None)
+    instruction_start = next((i for i, line in enumerate(lines) if INSTRUCTION_SECTION_RE.match(line)), None)
+
+    ingredient_lines: List[str] = []
+    instruction_lines: List[str] = []
+
+    if ingredient_start is not None:
+        end_index = instruction_start if instruction_start is not None and instruction_start > ingredient_start else len(lines)
+        ingredient_lines = lines[ingredient_start + 1:end_index]
+    else:
+        ingredient_lines = [line for line in lines if _looks_like_ingredient_line(line)]
+
+    if instruction_start is not None:
+        instruction_lines = lines[instruction_start + 1:]
+    else:
+        instruction_lines = [
+            line for line in lines
+            if line not in ingredient_lines and not INGREDIENT_SECTION_RE.match(line)
+        ]
+
+    grouped_ingredients = _parse_ingredient_groups_from_lines(ingredient_lines)
+    if not grouped_ingredients and ingredient_lines:
+        grouped_ingredients = [{"section": "Ingredients", "items": ingredient_lines}]
+
+    instructions = _format_instructions_from_lines(instruction_lines)
+
+    return {
+        "title": title,
+        "ingredients": grouped_ingredients,
+        "instructions": instructions,
+    }
+
+
+def _scrape_instagram_recipe(url: str) -> Dict:
+    last_error: Exception | None = None
+    caption = ""
+    image_url = None
+
+    header_sets = [INSTAGRAM_HEADERS, INSTAGRAM_HEADERS_MOBILE]
+    for candidate_url in _instagram_candidate_urls(url):
+        for headers in header_sets:
+            try:
+                response = requests.get(candidate_url, headers=headers, timeout=20)
+                response.raise_for_status()
+                html = response.text
+                found_caption = _extract_instagram_caption_from_html(html)
+                if found_caption:
+                    caption = found_caption
+                    image_url = _extract_instagram_image_from_html(html)
+                    break
+            except Exception as e:
+                last_error = e
+                continue
+        if caption:
+            break
+
+    if not caption:
+        if last_error:
+            logger.warning(f"Instagram fetch warning for {url}: {last_error}")
+        raise Exception("Could not extract caption from Instagram post/reel. Try manual entry.")
+
+    parsed = _parse_instagram_caption(caption)
+    recipe_title = parsed.get("title") or "Instagram Recipe"
+    return {
+        "url": url,
+        "title": recipe_title,
+        "image_url": image_url,
+        "ingredients": parsed.get("ingredients") or [{"section": "Ingredients", "items": []}],
+        "instructions": parsed.get("instructions") or "No instructions available.",
+        "total_time": None,
+        "yields": None,
+    }
+
+
 def scrape_recipe(url: str) -> Dict:
     """
     Scrape recipe data from a URL using recipe-scrapers library
@@ -505,6 +850,16 @@ def scrape_recipe(url: str) -> Dict:
         raise ValueError("Invalid URL provided")
 
     try:
+        is_instagram = _is_instagram_host(url)
+        if is_instagram:
+            # Try Instagram caption parsing first for post/reel/tv URLs.
+            # Some shared URLs can vary, so we also keep a fallback in the
+            # exception handler below.
+            if _is_instagram_url(url):
+                recipe_data = _scrape_instagram_recipe(url)
+                logger.info(f"Successfully scraped Instagram recipe: {recipe_data['title']}")
+                return recipe_data
+
         # Use wild_mode to support sites following common patterns
         scraper = scrape_me(url, wild_mode=True)
         instruction_steps = _extract_instruction_steps(scraper)
@@ -529,5 +884,21 @@ def scrape_recipe(url: str) -> Dict:
         return recipe_data
 
     except Exception as e:
+        if _is_instagram_host(url):
+            try:
+                recipe_data = _scrape_instagram_recipe(url)
+                logger.info(
+                    "Successfully scraped Instagram recipe after fallback: "
+                    f"{recipe_data['title']}"
+                )
+                return recipe_data
+            except Exception as instagram_error:
+                logger.error(
+                    "Failed Instagram fallback scrape from %s: %s",
+                    url,
+                    str(instagram_error),
+                )
+                return {'url': url, 'error': f"Failed to scrape recipe: {str(instagram_error)}"}
+
         logger.error(f"Failed to scrape recipe from {url}: {str(e)}")
         return {'url': url, 'error': f"Failed to scrape recipe: {str(e)}"}

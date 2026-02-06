@@ -5,6 +5,9 @@ A personal recipe scraper website for collecting and organizing recipes from the
 ## Features
 
 - Scrape recipes from any URL using recipe-scrapers library
+- Preview scraped recipes before saving, with quick edits
+- Edit saved recipe details (title, ingredients, instructions, yields, timing)
+- Search by ingredient using normalized aliases (e.g., "chicken thighs" matches "chicken")
 - Track cooking status (want to cook / already cooked)
 - Rate recipes (1-5 stars)
 - Add personal notes to recipes
@@ -133,23 +136,31 @@ After Pages is live, verify:
 
 ## Usage
 
-1. **Add Recipe:** Paste a recipe URL and click "Scrape Recipe"
+1. **Add Recipe:** Paste a recipe URL, review the preview, edit if needed, then save
 2. **View Recipes:** All recipes are displayed in a grid
 3. **Filter:** Click filter buttons to show "Want to Cook" or "Already Cooked"
-4. **Edit Recipe:** Click on any recipe card to open details
-5. **Update Status/Rating/Notes:** Make changes in the modal and click "Save Changes"
-6. **Delete Recipe:** Click "Delete Recipe" in the modal
+4. **Search:** Choose Recipe Name or Ingredient mode to find recipes
+5. **Edit Recipe Details:** Open a recipe, click "Edit Recipe Details", update fields, and save
+6. **Update Status/Rating/Notes:** Make changes in the details modal and click "Save Changes"
+7. **Delete Recipe:** Click "Delete Recipe" in the modal
 
 ## Supported Recipe Sites
 
 The app uses `recipe-scrapers` library with `wild_mode` enabled, which supports:
 - 100+ explicitly supported sites (AllRecipes, Food Network, NYT Cooking, etc.)
 - Many other sites that follow common recipe schema patterns
+- Public Instagram post links are supported with caption parsing fallback
+- Public Instagram **post and reel** links are supported with caption parsing fallback
+
+### Instagram Notes
+
+- Instagram scraping works best for **public** posts where the recipe is in the caption.
+- Captions are parsed heuristically, so formatting quality depends on how the post author structured ingredients/instructions.
+- If a caption is incomplete or blocked, use **Add Recipe Manually** in the app.
 
 ## Future Enhancements
 
 - [ ] Add one-click deploy workflow for Cloud Run + GitHub Pages
-- [ ] Add recipe search functionality
 - [ ] Add tags/categories
 - [ ] Export recipes to PDF
 - [ ] Shopping list generation
