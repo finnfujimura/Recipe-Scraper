@@ -27,7 +27,7 @@ class Config:
         'http://localhost:8000,http://127.0.0.1:8000',
     )
 
-    # Session cookie settings for cross-site auth (GitHub Pages -> Cloud Run).
+    # Session cookie settings for cross-site auth.
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SECURE = _parse_bool_env('SESSION_COOKIE_SECURE', 'False')
     SESSION_COOKIE_SAMESITE = os.getenv('SESSION_COOKIE_SAMESITE', 'Lax')

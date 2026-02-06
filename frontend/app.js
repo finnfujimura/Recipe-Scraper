@@ -104,6 +104,7 @@ let isAuthenticated = false;
 let pendingPreviewSourceUrl = '';
 let activeRecipeInModal = null;
 let isShoppingViewEnabled = false;
+let recipeScaleFactor = 1;
 
 // DOM Elements
 const loginScreen = document.getElementById('login-screen');
@@ -309,6 +310,207 @@ function tokenizeIngredientSearch(rawText) {
         }
     }
     return tokens;
+}
+
+function normalizeFractionToken(raw) {
+    const unicodeFractions = {
+        '¼': '1/4',
+        '½': '1/2',
+        '¾': '3/4',
+        '⅐': '1/7',
+        '⅑': '1/9',
+        '⅒': '1/10',
+        '⅓': '1/3',
+        '⅔': '2/3',
+        '⅕': '1/5',
+        '⅖': '2/5',
+        '⅗': '3/5',
+        '⅘': '4/5',
+        '⅙': '1/6',
+        '⅚': '5/6',
+        '⅛': '1/8',
+        '⅜': '3/8',
+        '⅝': '5/8',
+        '⅞': '7/8'
+    };
+
+    let token = String(raw || '').trim();
+    token = token.replace(/(\d)([¼½¾⅐⅑⅒⅓⅔⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞])/g, '$1 $2');
+    token = token.replace(/[¼½¾⅐⅑⅒⅓⅔⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞]/g, (char) => unicodeFractions[char] || char);
+    return token;
+}
+
+function parseQuantityValue(raw) {
+    const token = normalizeFractionToken(raw).trim();
+    if (!token) {
+        return null;
+    }
+
+    if (/^\d+\s+\d+\/\d+$/.test(token)) {
+        const [wholePart, fractionPart] = token.split(/\s+/);
+        const [num, den] = fractionPart.split('/').map(Number);
+        if (!den) {
+            return null;
+        }
+        return Number(wholePart) + (num / den);
+    }
+
+    if (/^\d+\/\d+$/.test(token)) {
+        const [num, den] = token.split('/').map(Number);
+        if (!den) {
+            return null;
+        }
+        return num / den;
+    }
+
+    const parsed = Number(token);
+    return Number.isFinite(parsed) ? parsed : null;
+}
+
+function formatQuantityValue(value) {
+    if (!Number.isFinite(value)) {
+        return '';
+    }
+
+    const rounded = Math.round(value * 1000) / 1000;
+    const whole = Math.floor(rounded);
+    const fraction = rounded - whole;
+
+    if (Math.abs(fraction) < 0.02) {
+        return String(Math.round(rounded));
+    }
+
+    const commonFractions = [
+        [1, 8], [1, 6], [1, 5], [1, 4], [1, 3], [3, 8], [2, 5], [1, 2],
+        [3, 5], [5, 8], [2, 3], [3, 4], [4, 5], [5, 6], [7, 8]
+    ];
+
+    let best = null;
+    let smallestDiff = Number.POSITIVE_INFINITY;
+    for (const [num, den] of commonFractions) {
+        const fracValue = num / den;
+        const diff = Math.abs(fraction - fracValue);
+        if (diff < smallestDiff) {
+            smallestDiff = diff;
+            best = [num, den];
+        }
+    }
+
+    if (best && smallestDiff < 0.03) {
+        const [num, den] = best;
+        if (whole > 0) {
+            return `${whole} ${num}/${den}`;
+        }
+        return `${num}/${den}`;
+    }
+
+    return String(Math.round(rounded * 100) / 100).replace(/\.0+$/, '');
+}
+
+function scaleNumberToken(token, factor) {
+    const trimmed = String(token || '').trim();
+    const isApproximate = trimmed.startsWith('~');
+    const withoutApprox = isApproximate ? trimmed.slice(1).trim() : trimmed;
+    const parsedValue = parseQuantityValue(withoutApprox);
+    if (parsedValue === null) {
+        return null;
+    }
+    const scaledValue = parsedValue * factor;
+    const formatted = formatQuantityValue(scaledValue);
+    return isApproximate ? `~${formatted}` : formatted;
+}
+
+function scaleRangeToken(token, factor) {
+    const parts = String(token || '').split(/\s*(?:-|–|to)\s*/i);
+    if (parts.length !== 2) {
+        return null;
+    }
+    const left = scaleNumberToken(parts[0], factor);
+    const right = scaleNumberToken(parts[1], factor);
+    if (!left || !right) {
+        return null;
+    }
+    return `${left}-${right}`;
+}
+
+function scaleTextFirstQuantity(text, factor) {
+    const raw = String(text || '');
+    const fixedText = normalizeFractionToken(raw);
+    const blockedPhrases = [
+        'to taste',
+        'as needed',
+        'optional',
+        'a sprinkle',
+        'a pinch',
+        'a dash',
+        'undefined'
+    ];
+    const lowered = fixedText.toLowerCase();
+    if (blockedPhrases.some((phrase) => lowered.includes(phrase))) {
+        return null;
+    }
+    if (/^step\s+\d+/i.test(lowered.trim())) {
+        return null;
+    }
+
+    const rangeMatch = fixedText.match(/~?\s*(?:\d+\s+\d+\/\d+|\d+\/\d+|\d+(?:\.\d+)?)(?:\s*(?:-|–|to)\s*~?\s*(?:\d+\s+\d+\/\d+|\d+\/\d+|\d+(?:\.\d+)?))/i);
+    if (rangeMatch && typeof rangeMatch.index === 'number') {
+        const scaledRange = scaleRangeToken(rangeMatch[0], factor);
+        if (scaledRange) {
+            return (
+                fixedText.slice(0, rangeMatch.index) +
+                scaledRange +
+                fixedText.slice(rangeMatch.index + rangeMatch[0].length)
+            );
+        }
+    }
+
+    const singleMatch = fixedText.match(/~?\s*(?:\d+\s+\d+\/\d+|\d+\/\d+|\d+(?:\.\d+)?)/);
+    if (!singleMatch || typeof singleMatch.index !== 'number') {
+        return null;
+    }
+    const scaledNumber = scaleNumberToken(singleMatch[0], factor);
+    if (!scaledNumber) {
+        return null;
+    }
+    return (
+        fixedText.slice(0, singleMatch.index) +
+        scaledNumber +
+        fixedText.slice(singleMatch.index + singleMatch[0].length)
+    );
+}
+
+function scaleIngredientLine(item, factor) {
+    const raw = String(item || '').trim();
+    if (!raw || factor === 1) {
+        return raw;
+    }
+
+    const segments = raw.split(',');
+    for (let index = segments.length - 1; index >= 0; index -= 1) {
+        const scaledSegment = scaleTextFirstQuantity(segments[index], factor);
+        if (scaledSegment) {
+            const updated = [...segments];
+            updated[index] = scaledSegment;
+            return updated.join(',').replace(/\s+,/g, ',').replace(/,\s+/g, ', ').trim();
+        }
+    }
+
+    const scaledWholeLine = scaleTextFirstQuantity(raw, factor);
+    return scaledWholeLine || raw;
+}
+
+function scaleYieldText(yields, factor) {
+    const raw = String(yields || '').trim();
+    if (!raw || factor === 1) {
+        return raw;
+    }
+    return scaleTextFirstQuantity(raw, factor) || raw;
+}
+
+function formatScaleFactorLabel(factor) {
+    const rounded = Math.round(factor * 100) / 100;
+    return Number.isInteger(rounded) ? String(rounded) : String(rounded).replace(/0+$/, '').replace(/\.$/, '');
 }
 
 // Authentication
@@ -644,7 +846,7 @@ function escapeHtml(value) {
         .replaceAll("'", '&#39;');
 }
 
-function renderIngredientGroups(ingredients) {
+function renderIngredientGroups(ingredients, factor = 1) {
     if (!ingredients) {
         return '<p>No ingredients available</p>';
     }
@@ -666,7 +868,7 @@ function renderIngredientGroups(ingredients) {
     if (groups.length === 1 && (groups[0].section || '').toLowerCase() === 'ingredients') {
         return `
             <ul>
-                ${(groups[0].items || []).map(item => `<li>${escapeHtml(item)}</li>`).join('')}
+                ${(groups[0].items || []).map(item => `<li>${escapeHtml(scaleIngredientLine(item, factor))}</li>`).join('')}
             </ul>
         `;
     }
@@ -675,13 +877,13 @@ function renderIngredientGroups(ingredients) {
         <div class="ingredient-group">
             <h4>${escapeHtml(group.section)}</h4>
             <ul>
-                ${(group.items || []).map(item => `<li>${escapeHtml(item)}</li>`).join('')}
+                ${(group.items || []).map(item => `<li>${escapeHtml(scaleIngredientLine(item, factor))}</li>`).join('')}
             </ul>
         </div>
     `).join('');
 }
 
-function flattenIngredientItems(ingredients) {
+function flattenIngredientItems(ingredients, factor = 1) {
     if (!Array.isArray(ingredients) || ingredients.length === 0) {
         return [];
     }
@@ -693,7 +895,7 @@ function flattenIngredientItems(ingredients) {
             for (const item of groupItems) {
                 const cleaned = String(item || '').trim();
                 if (cleaned) {
-                    items.push(cleaned);
+                    items.push(scaleIngredientLine(cleaned, factor));
                 }
             }
         }
@@ -701,7 +903,7 @@ function flattenIngredientItems(ingredients) {
     }
 
     return ingredients
-        .map(item => String(item || '').trim())
+        .map(item => scaleIngredientLine(String(item || '').trim(), factor))
         .filter(Boolean);
 }
 
@@ -735,8 +937,8 @@ function categorizeIngredient(item) {
     return 'Other';
 }
 
-function renderShoppingIngredientGroups(ingredients) {
-    const items = flattenIngredientItems(ingredients);
+function renderShoppingIngredientGroups(ingredients, factor = 1) {
+    const items = flattenIngredientItems(ingredients, factor);
     if (!items.length) {
         return '<p>No ingredients available</p>';
     }
@@ -915,6 +1117,7 @@ function openRecipeModal(recipeId) {
 
     activeRecipeInModal = recipe;
     isShoppingViewEnabled = false;
+    recipeScaleFactor = 1;
     const ingredientsHtml = renderIngredientGroups(recipe.ingredients);
     const instructionsHtml = renderInstructions(recipe.instructions);
 
@@ -924,7 +1127,9 @@ function openRecipeModal(recipeId) {
 
     const metaParts = [];
     if (recipe.total_time) metaParts.push(`<span>&#9201; ${escapeHtml(String(recipe.total_time))} minutes</span>`);
-    if (recipe.yields) metaParts.push(`<span>&#127860; ${escapeHtml(recipe.yields)}</span>`);
+    if (recipe.yields) {
+        metaParts.push(`<span id="modal-yields-wrap">&#127860; <span id="modal-yields-value">${escapeHtml(recipe.yields)}</span></span>`);
+    }
     const metaHtml = metaParts.length ? `<div class="modal-meta">${metaParts.join('')}</div>` : '';
 
     const modalBody = document.getElementById('modal-body');
@@ -935,7 +1140,19 @@ function openRecipeModal(recipeId) {
 
         <div class="ingredients-heading-row">
             <h3>Ingredients</h3>
-            <button id="shopping-view-toggle" class="modal-inline-btn" onclick="toggleShoppingView()">Shopping View</button>
+            <button id="shopping-view-toggle" type="button" class="modal-inline-btn" onclick="toggleShoppingView()">Shopping View</button>
+        </div>
+        <div class="scale-controls">
+            <div class="scale-preset-row">
+                <button type="button" class="scale-preset-btn" data-scale="0.5" onclick="setRecipeScale(0.5)">Half</button>
+                <button type="button" class="scale-preset-btn active" data-scale="1" onclick="setRecipeScale(1)">1x</button>
+                <button type="button" class="scale-preset-btn" data-scale="2" onclick="setRecipeScale(2)">Double</button>
+            </div>
+            <div class="scale-custom-row">
+                <input id="scale-custom-input" type="number" min="0.1" step="0.1" value="1">
+                <button type="button" class="modal-inline-btn" onclick="applyCustomScale()">Apply</button>
+                <span id="scale-factor-label" class="scale-factor-label">Scale: 1x</span>
+            </div>
         </div>
         <div id="modal-ingredients-content">${ingredientsHtml}</div>
 
@@ -969,6 +1186,8 @@ function openRecipeModal(recipeId) {
     `;
 
     recipeModal.classList.add('active');
+    updateScaleControls();
+    updateModalYieldsView();
 }
 
 function updateModalIngredientsView() {
@@ -982,10 +1201,10 @@ function updateModalIngredientsView() {
     }
 
     if (isShoppingViewEnabled) {
-        content.innerHTML = renderShoppingIngredientGroups(activeRecipeInModal.ingredients);
+        content.innerHTML = renderShoppingIngredientGroups(activeRecipeInModal.ingredients, recipeScaleFactor);
         toggleBtn.textContent = 'Recipe View';
     } else {
-        content.innerHTML = renderIngredientGroups(activeRecipeInModal.ingredients);
+        content.innerHTML = renderIngredientGroups(activeRecipeInModal.ingredients, recipeScaleFactor);
         toggleBtn.textContent = 'Shopping View';
     }
 }
@@ -995,10 +1214,60 @@ function toggleShoppingView() {
     updateModalIngredientsView();
 }
 
+function updateScaleControls() {
+    const label = document.getElementById('scale-factor-label');
+    const customInput = document.getElementById('scale-custom-input');
+    const presetButtons = document.querySelectorAll('.scale-preset-btn');
+    if (label) {
+        label.textContent = `Scale: ${formatScaleFactorLabel(recipeScaleFactor)}x`;
+    }
+    if (customInput) {
+        customInput.value = formatScaleFactorLabel(recipeScaleFactor);
+    }
+    presetButtons.forEach((button) => {
+        const value = Number(button.getAttribute('data-scale'));
+        const active = Math.abs(value - recipeScaleFactor) < 0.001;
+        button.classList.toggle('active', active);
+    });
+}
+
+function updateModalYieldsView() {
+    const yieldsText = document.getElementById('modal-yields-value');
+    if (!yieldsText || !activeRecipeInModal || !activeRecipeInModal.yields) {
+        return;
+    }
+    yieldsText.textContent = scaleYieldText(activeRecipeInModal.yields, recipeScaleFactor);
+}
+
+function setRecipeScale(factor) {
+    const numericFactor = Number(factor);
+    if (!Number.isFinite(numericFactor) || numericFactor <= 0) {
+        return;
+    }
+    recipeScaleFactor = numericFactor;
+    updateScaleControls();
+    updateModalIngredientsView();
+    updateModalYieldsView();
+}
+
+function applyCustomScale() {
+    const input = document.getElementById('scale-custom-input');
+    if (!input) {
+        return;
+    }
+    const numeric = Number(input.value);
+    if (!Number.isFinite(numeric) || numeric <= 0) {
+        alert('Please enter a valid scale greater than 0.');
+        return;
+    }
+    setRecipeScale(numeric);
+}
+
 function closeModal() {
     recipeModal.classList.remove('active');
     activeRecipeInModal = null;
     isShoppingViewEnabled = false;
+    recipeScaleFactor = 1;
 }
 
 async function handleSaveEditedRecipe(e) {

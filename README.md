@@ -8,6 +8,7 @@ A personal recipe scraper website for collecting and organizing recipes from the
 - Preview scraped recipes before saving, with quick edits
 - Edit saved recipe details (title, ingredients, instructions, yields, timing)
 - Search by ingredient using normalized aliases (e.g., "chicken thighs" matches "chicken")
+- Scale recipe ingredients and yields (half, double, or custom multiplier)
 - Track cooking status (want to cook / already cooked)
 - Rate recipes (1-5 stars)
 - Add personal notes to recipes
@@ -78,6 +79,93 @@ The API will be available at http://localhost:5000
 
 3. Login with the password you set in `.env`
 
+## Deploy (Cloud Run)
+
+Deploy the full application (frontend + backend) to Google Cloud Run.
+
+### 1. Deploy to Cloud Run
+
+From repo root:
+
+```bash
+gcloud run deploy recipe-scraper \
+  --source . \
+  --region us-central1 \
+  --allow-unauthenticated
+```
+
+Set Cloud Run environment variables:
+- `SUPABASE_URL`
+- `SUPABASE_KEY`
+- `APP_PASSWORD`
+- `SECRET_KEY`
+- `FLASK_DEBUG=False`
+
+### 2. Verify Deployment
+
+After deployment, verify:
+- Login works
+- Recipe list loads
+- Add/update/delete recipe endpoints work
+
+## Usage
+
+1. **Add Recipe:** Paste a recipe URL, review the preview, edit if needed, then save
+2. **View Recipes:** All recipes are displayed in a grid
+3. **Filter:** Click filter buttons to show "Want to Cook" or "Already Cooked"
+4. **Search:** Choose Recipe Name or Ingredient mode to find recipes
+5. **Edit Recipe Details:** Open a recipe, click "Edit Recipe Details", update fields, and save
+6. **Scale Recipe:** In the recipe modal, use Half / 1x / Double or set a custom multiplier
+7. **Update Status/Rating/Notes:** Make changes in the details modal and click "Save Changes"
+8. **Delete Recipe:** Click "Delete Recipe" in the modal
+
+## Supported Recipe Sites
+
+The app uses `recipe-scrapers` library with `wild_mode` enabled, which supports:
+- 100+ explicitly supported sites (AllRecipes, Food Network, NYT Cooking, etc.)
+- Many other sites that follow common recipe schema patterns
+- Public Instagram post links are supported with caption parsing fallback
+- Public Instagram **post and reel** links are supported with caption parsing fallback
+
+### Instagram Notes
+
+- Instagram scraping works best for **public** posts where the recipe is in the caption.
+- Captions are parsed heuristically, so formatting quality depends on how the post author structured ingredients/instructions.
+- If a caption is incomplete or blocked, use **Add Recipe Manually** in the app.
+
+## Future Enhancements
+
+- [ ] Add tags/categories
+- [ ] Export recipes to PDF
+- [ ] Shopping list generation
+- [ ] Meal planning features
+
+## Development
+
+### Running Tests
+
+```bash
+pytest tests/ -v
+```
+
+### Project Structure
+
+```
+valentines/
+├── backend/
+│   ├── app.py              # Flask application
+│   ├── auth.py             # Authentication middleware
+│   ├── scraper.py          # Recipe scraping service
+│   ├── database.py         # Supabase connection
+│   ├── schema.sql          # Database schema
+│   └── requirements.txt    # Python dependencies
+├── frontend/
+│   ├── index.html          # Main HTML
+│   ├── styles.css          # Styles
+│   └── app.js              # Frontend JavaScript
+├── tests/                  # Test files
+└── docs/plans/             # Implementation plans
+```
 
 ## License
 

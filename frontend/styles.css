@@ -787,6 +787,73 @@ main {
     background: var(--sage-light);
 }
 
+.scale-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.scale-preset-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.scale-preset-btn {
+    padding: 7px 12px;
+    border-radius: var(--radius-sm);
+    border: 1.5px solid var(--border-warm);
+    background: var(--bg-cream);
+    color: var(--ink-light);
+    font-family: 'Playfair Display', Georgia, serif;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.scale-preset-btn:hover {
+    border-color: var(--sage);
+    color: var(--sage-dark);
+}
+
+.scale-preset-btn.active {
+    border-color: var(--sage);
+    background: var(--sage-light);
+    color: var(--sage-dark);
+}
+
+.scale-custom-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.scale-custom-row .modal-inline-btn {
+    margin: 0;
+}
+
+#scale-custom-input {
+    width: 90px;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    border: 1.5px solid var(--border-warm);
+    background: var(--bg-cream);
+    color: var(--ink);
+    font-family: 'Playfair Display', Georgia, serif;
+}
+
+#scale-custom-input:focus {
+    outline: none;
+    border-color: var(--sage);
+}
+
+.scale-factor-label {
+    color: var(--muted);
+    font-size: 13px;
+}
+
 .modal-meta {
     display: flex;
     gap: 20px;
@@ -1328,6 +1395,10 @@ main {
     .modal-inline-btn {
         margin-top: 0;
         margin-bottom: 0;
+    }
+
+    .scale-custom-row {
+        width: 100%;
     }
 
     .add-recipe-section {
