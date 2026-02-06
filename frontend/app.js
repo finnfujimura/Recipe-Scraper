@@ -1,6 +1,6 @@
 const API_HOST = window.location.hostname || 'localhost';
 const DEFAULT_API_BASE_URL = `http://${API_HOST}:5001`;
-const API_BASE_URL = (window.APP_CONFIG && window.APP_CONFIG.API_BASE_URL
+const API_BASE_URL = (window.APP_CONFIG && window.APP_CONFIG.API_BASE_URL !== undefined
     ? window.APP_CONFIG.API_BASE_URL
     : DEFAULT_API_BASE_URL).replace(/\/+$/, '');
 const API_URL = `${API_BASE_URL}/api`;
