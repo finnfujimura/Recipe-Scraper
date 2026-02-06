@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Our Recipe Collection</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Login Screen -->
+    <div id="login-screen" class="screen active">
+        <div class="login-container">
+            <h1>Our Recipe Collection</h1>
+            <p>Welcome! Enter the password to continue.</p>
+            <form id="login-form">
+                <input type="password" id="password-input" placeholder="Password" required>
+                <button type="submit">Login</button>
+            </form>
+            <div id="login-error" class="error"></div>
+        </div>
+    </div>
+
+    <!-- Main App Screen -->
+    <div id="app-screen" class="screen">
+        <header>
+            <h1>Our Recipe Collection</h1>
+            <button id="logout-btn" class="logout-btn">Logout</button>
+        </header>
+
+        <main>
+            <!-- Add Recipe Section -->
+            <section class="add-recipe-section">
+                <h2>Add New Recipe</h2>
+                <form id="add-recipe-form">
+                    <input type="url" id="recipe-url" placeholder="Paste recipe URL here..." required>
+                    <button type="submit">Scrape Recipe</button>
+                </form>
+                <div id="scrape-status" class="status-message"></div>
+            </section>
+
+            <!-- Search Section -->
+            <section class="search-section">
+                <label for="recipe-search">Search Recipes</label>
+                <div class="search-controls">
+                    <select id="search-mode" aria-label="Choose search type">
+                        <option value="name">Recipe Name</option>
+                        <option value="ingredient">Ingredient</option>
+                    </select>
+                    <input type="search" id="recipe-search" placeholder="Search recipe names...">
+                </div>
+            </section>
+
+            <!-- Filter Section -->
+            <section class="filter-section">
+                <button class="filter-btn active" data-filter="all">All Recipes</button>
+                <button class="filter-btn" data-filter="want_to_cook">Want to Cook</button>
+                <button class="filter-btn" data-filter="already_cooked">Already Cooked</button>
+            </section>
+
+            <!-- Recipes Grid -->
+            <section id="recipes-container" class="recipes-grid">
+                <p class="loading">Loading recipes...</p>
+            </section>
+        </main>
+    </div>
+
+    <!-- Recipe Modal -->
+    <div id="recipe-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <div id="modal-body"></div>
+        </div>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
