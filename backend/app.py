@@ -18,9 +18,14 @@ load_dotenv()
 
 def create_app():
     """Create and configure Flask app"""
-    app = Flask(__name__)
+    # Serve static files from ../frontend
+    app = Flask(__name__, static_folder='../frontend', static_url_path='')
     app.config.from_object(Config)
     app.secret_key = app.config.get('SECRET_KEY', 'dev-secret-key-change-in-production')
+
+    @app.route('/')
+    def index():
+        return app.send_static_file('index.html')
 
     # Enable CORS for configured frontend hosts (local + production).
     CORS(
